@@ -1,10 +1,13 @@
 package com.taskchi.taskchi.auth;
 
+import com.taskchi.taskchi.users.User;
+import com.taskchi.taskchi.users.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.authentication.*;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -18,13 +21,15 @@ import java.util.List;
 public class AuthController {
 
     private final AuthenticationManager authenticationManager;
+    private final UserRepository userRepository;
 
     // مهم: این ریپازیتوری کانتکست را داخل سشن ذخیره می‌کند
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
 
-    public AuthController(AuthenticationManager authenticationManager) {
+    public AuthController(AuthenticationManager authenticationManager, UserRepository userRepository) {
         this.authenticationManager = authenticationManager;
+        this.userRepository = userRepository;
     }
 
     public record LoginRequest(@NotBlank String email, @NotBlank String password) {}
@@ -39,7 +44,6 @@ public class AuthController {
         context.setAuthentication(auth);
         SecurityContextHolder.setContext(context);
 
-        // این خط کلید حل مشکل است:
         securityContextRepository.saveContext(context, request, response);
     }
 
@@ -50,14 +54,21 @@ public class AuthController {
         SecurityContextHolder.clearContext();
     }
 
-    public record MeResponse(String email, List<String> roles) {}
+    public record MeResponse(Long id, String fullName, String email, List<String> roles) {}
 
     @GetMapping("/me")
     public MeResponse me(Authentication authentication) {
         if (authentication == null) return null;
+
+        String email = authentication.getName();
+        User u = userRepository.findByEmail(email).orElse(null);
+        if (u == null) return null;
+
         return new MeResponse(
-                authentication.getName(),
-                authentication.getAuthorities().stream().map(a -> a.getAuthority()).toList()
+                u.getId(),
+                u.getFullName(),
+                email,
+                authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList()
         );
     }
 }

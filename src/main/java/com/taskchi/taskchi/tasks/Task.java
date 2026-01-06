@@ -2,64 +2,65 @@ package com.taskchi.taskchi.tasks;
 
 import com.taskchi.taskchi.users.User;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
-import java.time.OffsetDateTime;
+import java.time.*;
 
 @Entity
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Table(name = "tasks")
 public class Task {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Getter @Setter
     private Long id;
 
-    @Column(nullable = false, length = 300)
-    @Getter @Setter
+    @Column(nullable = false, length = 200)
     private String title;
 
-    @Column(columnDefinition = "text")
-    @Getter @Setter
-    private String description;
-
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    @Getter @Setter
-    private TaskPriority priority = TaskPriority.P3;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    @Getter @Setter
+    @Column(nullable = false)
     private TaskStatus status = TaskStatus.TODO;
 
-    @Column(name = "due_at")
-    @Getter @Setter
-    private OffsetDateTime dueAt;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private TaskPriority priority = TaskPriority.MEDIUM;
+
+    @Column
+    private LocalDate date;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assignee_id")
-    @Getter @Setter
-    private User assignee;
+    @JoinColumn(name = "assigned_to_id")
+    private User assignedTo;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "created_by_id", nullable = false)
-    @Getter @Setter
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_id")
     private User createdBy;
 
-    @Column(name = "created_at", nullable = false)
-    @Getter @Setter
-    private OffsetDateTime createdAt = OffsetDateTime.now();
+    // Reminder for the task creator/assigner to follow-up.
+    @Column(name = "follow_up_enabled", nullable = false)
+    private boolean followUpEnabled = false;
 
-    @Column(name = "updated_at", nullable = false)
-    @Getter @Setter
-    private OffsetDateTime updatedAt = OffsetDateTime.now();
+    @Column(name = "follow_up_at")
+    private Instant followUpAt;
 
-    @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = OffsetDateTime.now();
-    }
+    @Column(nullable = false)
+    private Instant createdAt = Instant.now();
 
-    // getters/setters
+    @Column(name = "close_requested", nullable = false)
+    private boolean closeRequested = false;
+
+    @Column(name = "close_requested_at")
+    private Instant closeRequestedAt;
+
+    @Column(name = "closed_at")
+    private Instant closedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "closed_by_id")
+    private User closedBy;
 }

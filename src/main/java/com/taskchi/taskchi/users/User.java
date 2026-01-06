@@ -2,49 +2,46 @@ package com.taskchi.taskchi.users;
 
 import com.taskchi.taskchi.common.Role;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
-
-import java.time.OffsetDateTime;
+import lombok.*;
+import java.util.*;
 
 @Entity
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Table(name = "users")
 public class User {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Getter
-    @Setter
     private Long id;
 
-    @Column(name = "full_name", nullable = false, length = 200)
-    @Getter
-    @Setter
-    private String fullName;
-
-    @Column(nullable = false, unique = true, length = 200)
-    @Getter
-    @Setter
+    @Column(nullable = false, unique = true, length = 80)
     private String email;
 
-    @Column(name = "password_hash", nullable = false, length = 200)
-    @Getter
-    @Setter
+    @Column(nullable = false)
+    private String fullName;
+
+    @Column(nullable = false)
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
-    @Getter
-    @Setter
-    private Role role;
+    @Column(nullable = false, length = 20)
+    private Role role; // enum Role (ADMIN, STAFF, ...)
 
-    @Column(name = "is_active", nullable = false)
-    @Getter
-    @Setter
+    @Column(nullable = false)
     private boolean active = true;
 
-    @Column(name = "created_at", nullable = false)
-    @Getter
-    @Setter
-    private OffsetDateTime createdAt = OffsetDateTime.now();
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "manager_id")
+    private User manager; // سلسله‌مراتب
 
+    @OneToMany(mappedBy = "manager")
+    private List<User> subordinates = new ArrayList<>();
+
+    public boolean isAdmin() {
+        return role == Role.ADMIN;
+    }
 }

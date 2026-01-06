@@ -37,6 +37,9 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
 //    implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.boot:spring-boot-starter-web")
+
+    // Jalali (Persian) calendar calculations (iterate dates, weekday)
+    implementation("com.ibm.icu:icu4j:76.1")
     compileOnly("org.projectlombok:lombok")
     runtimeOnly("org.postgresql:postgresql")
     annotationProcessor("org.projectlombok:lombok")

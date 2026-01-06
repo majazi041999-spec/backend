@@ -19,6 +19,10 @@ spring:
       ddl-auto: validate
     open-in-view: false
 
+  jackson:
+    mapper:
+      accept-case-insensitive-enums: true
+
   flyway:
     enabled: true
 

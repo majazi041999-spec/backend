@@ -1,0 +1,15 @@
+ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS close_requested BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS close_requested_at TIMESTAMP NULL;
+
+ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP NULL;
+
+ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS closed_by_id BIGINT NULL;
+
+ALTER TABLE tasks
+    ADD CONSTRAINT IF NOT EXISTS fk_tasks_closed_by
+        FOREIGN KEY (closed_by_id) REFERENCES users(id);

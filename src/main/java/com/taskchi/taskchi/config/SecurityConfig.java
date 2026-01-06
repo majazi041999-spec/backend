@@ -13,7 +13,6 @@ import org.springframework.web.cors.*;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
 
 import java.util.List;

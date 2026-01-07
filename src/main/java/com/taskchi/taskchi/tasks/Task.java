@@ -1,10 +1,12 @@
+// backend/src/main/java/com/taskchi/taskchi/tasks/Task.java
 package com.taskchi.taskchi.tasks;
 
 import com.taskchi.taskchi.users.User;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.*;
+import java.time.Instant;
+import java.time.LocalDate;
 
 @Entity
 @Getter
@@ -41,16 +43,7 @@ public class Task {
     @JoinColumn(name = "created_by_id")
     private User createdBy;
 
-    // Reminder for the task creator/assigner to follow-up.
-    @Column(name = "follow_up_enabled", nullable = false)
-    private boolean followUpEnabled = false;
-
-    @Column(name = "follow_up_at")
-    private Instant followUpAt;
-
-    @Column(nullable = false)
-    private Instant createdAt = Instant.now();
-
+    // Close workflow
     @Column(name = "close_requested", nullable = false)
     private boolean closeRequested = false;
 
@@ -63,4 +56,14 @@ public class Task {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "closed_by_id")
     private User closedBy;
+
+    // Reminder for the task creator/assigner to follow-up.
+    @Column(name = "follow_up_enabled", nullable = false)
+    private boolean followUpEnabled = false;
+
+    @Column(name = "follow_up_at")
+    private Instant followUpAt;
+
+    @Column(nullable = false)
+    private Instant createdAt = Instant.now();
 }

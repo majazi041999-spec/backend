@@ -1,3 +1,4 @@
+// backend/src/main/java/com/taskchi/taskchi/meeting/MeetingService.java
 package com.taskchi.taskchi.meeting;
 
 import com.taskchi.taskchi.users.User;
@@ -21,16 +22,15 @@ public class MeetingService {
     @Transactional(readOnly = true)
     public List<Meeting> range(User owner, LocalDate from, LocalDate to) {
         if (owner == null) throw new IllegalArgumentException("owner is required");
-        return repo.findByCreatedByIdAndDateBetweenFetchAll(owner.getId(), from, to);
+        return repo.findByCreatedByIdInRangeWithReminders(owner.getId(), from, to);
     }
 
     @Transactional(readOnly = true)
     public Meeting get(User owner, Long id) {
         if (owner == null) throw new IllegalArgumentException("owner is required");
-        return repo.findByIdAndCreatedByIdFetchAll(id, owner.getId())
+        return repo.findByIdAndCreatedByIdWithReminders(id, owner.getId())
                 .orElseThrow(() -> new NoSuchElementException("Meeting not found: " + id));
     }
-
 
     @Transactional
     public Meeting create(User owner, MeetingDto dto) {

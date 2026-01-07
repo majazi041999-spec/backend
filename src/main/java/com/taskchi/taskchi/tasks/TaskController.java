@@ -1,6 +1,9 @@
+// backend/src/main/java/com/taskchi/taskchi/tasks/TaskController.java
 package com.taskchi.taskchi.tasks;
 
 import com.taskchi.taskchi.auth.CurrentUser;
+import com.taskchi.taskchi.notification.InAppNotification;
+import com.taskchi.taskchi.notification.InAppNotificationRepository;
 import com.taskchi.taskchi.users.User;
 import com.taskchi.taskchi.users.UserHierarchyService;
 import com.taskchi.taskchi.users.UserRepository;
@@ -25,15 +28,18 @@ public class TaskController {
     private final UserRepository userRepo;
     private final UserHierarchyService hierarchy;
     private final CurrentUser currentUser;
+    private final InAppNotificationRepository notifRepo;
 
     public TaskController(TaskRepository repo,
                           UserRepository userRepo,
                           UserHierarchyService hierarchy,
-                          CurrentUser currentUser) {
+                          CurrentUser currentUser,
+                          InAppNotificationRepository notifRepo) {
         this.repo = repo;
         this.userRepo = userRepo;
         this.hierarchy = hierarchy;
         this.currentUser = currentUser;
+        this.notifRepo = notifRepo;
     }
 
     public record TaskDto(
@@ -47,7 +53,12 @@ public class TaskController {
             Long createdById,
             String createdByName,
             Boolean followUpEnabled,
-            Instant followUpAt
+            Instant followUpAt,
+            Boolean closeRequested,
+            Instant closeRequestedAt,
+            Instant closedAt,
+            Long closedById,
+            String closedByName
     ) {}
 
     public TaskDto toDto(Task t) {
@@ -56,6 +67,9 @@ public class TaskController {
 
         Long createdById = t.getCreatedBy() != null ? t.getCreatedBy().getId() : null;
         String createdByName = t.getCreatedBy() != null ? t.getCreatedBy().getFullName() : null;
+
+        Long closedById = t.getClosedBy() != null ? t.getClosedBy().getId() : null;
+        String closedByName = t.getClosedBy() != null ? t.getClosedBy().getFullName() : null;
 
         return new TaskDto(
                 t.getId(),
@@ -68,11 +82,15 @@ public class TaskController {
                 createdById,
                 createdByName,
                 t.isFollowUpEnabled(),
-                t.getFollowUpAt()
+                t.getFollowUpAt(),
+                t.isCloseRequested(),
+                t.getCloseRequestedAt(),
+                t.getClosedAt(),
+                closedById,
+                closedByName
         );
     }
 
-    // 👁️ لیست تسک‌های قابل مشاهده (برای خود کاربر)
     @GetMapping
     @Transactional(readOnly = true)
     public List<TaskDto> list(Authentication auth) {
@@ -80,7 +98,6 @@ public class TaskController {
         return repo.findVisible(me.getId()).stream().map(this::toDto).toList();
     }
 
-    // ➕ ساخت تسک
     @PostMapping
     @Transactional
     public TaskDto create(@RequestBody Task body, Authentication auth) {
@@ -93,12 +110,10 @@ public class TaskController {
         User assignee = userRepo.findById(body.getAssignedTo().getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "assignee not found"));
 
-        // ❌ کسی نمی‌تواند به ادمین تسک بده (ادمین فقط می‌تواند برای خودش تسک بسازد)
         if (assignee.isAdmin() && !assignee.getId().equals(me.getId())) {
             throw new AccessDeniedException("Cannot assign tasks to admin");
         }
 
-        // اجازه‌ی ارجاع: ADMIN یا مدیر مستقیم/بالاسری (اگر hierarchy داری)
         if (!me.isAdmin()) {
             boolean canAssign = hierarchy.isManagerOf(me.getId(), assignee.getId()) || me.getId().equals(assignee.getId());
             if (!canAssign) throw new AccessDeniedException("Not allowed to assign to this user");
@@ -112,7 +127,11 @@ public class TaskController {
         t.setStatus(body.getStatus() != null ? body.getStatus() : TaskStatus.TODO);
         t.setPriority(body.getPriority() != null ? body.getPriority() : TaskPriority.MEDIUM);
 
-        // Follow-up reminder (for the creator/assigner)
+        t.setCloseRequested(false);
+        t.setCloseRequestedAt(null);
+        t.setClosedAt(null);
+        t.setClosedBy(null);
+
         if (body.getFollowUpAt() != null) {
             t.setFollowUpAt(body.getFollowUpAt());
             t.setFollowUpEnabled(true);
@@ -135,7 +154,6 @@ public class TaskController {
         boolean isAssignee = t.getAssignedTo() != null && t.getAssignedTo().getId().equals(me.getId());
         boolean isCreator = t.getCreatedBy() != null && t.getCreatedBy().getId().equals(me.getId());
 
-        // ✅ فقط: assignee یا creator یا admin
         if (!(me.isAdmin() || isAssignee || isCreator)) {
             throw new AccessDeniedException("Not allowed to update this task");
         }
@@ -144,27 +162,30 @@ public class TaskController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body is required");
         }
 
-        // ✅ assignee فقط می‌تواند status را تغییر دهد
+        if (t.getStatus() == TaskStatus.DONE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Task is already closed");
+        }
+
+        if (req.getStatus() == TaskStatus.DONE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only creator can close task (use /api/tasks/{id}/close)");
+        }
+
         if (isAssignee && !me.isAdmin() && !isCreator) {
             if (req.getStatus() != null) {
                 t.setStatus(req.getStatus());
             }
-            // هر فیلد دیگری ممنوع
             if (req.getPriority() != null || req.getAssigneeId() != null
                     || req.getFollowUpEnabled() != null || req.getFollowUpAt() != null) {
                 throw new AccessDeniedException("Assignee can only update status");
             }
         } else {
-            // ✅ creator/admin می‌تواند status/priority را تغییر دهد
             if (req.getStatus() != null) t.setStatus(req.getStatus());
             if (req.getPriority() != null) t.setPriority(req.getPriority());
 
-            // ✅ creator/admin می‌تواند assignee را تغییر دهد (با رعایت سلسله‌مراتب)
             if (req.getAssigneeId() != null) {
                 User assignee = userRepo.findById(req.getAssigneeId())
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "assignee not found"));
 
-                // ❌ کسی نمی‌تواند به ادمین تسک بده (ادمین فقط برای خودش)
                 if (assignee.isAdmin() && !assignee.getId().equals(me.getId())) {
                     throw new AccessDeniedException("Cannot assign tasks to admin");
                 }
@@ -177,7 +198,6 @@ public class TaskController {
                 t.setAssignedTo(assignee);
             }
 
-            // Follow-up reminder (creator/admin only)
             if (req.getFollowUpEnabled() != null) {
                 boolean enabled = Boolean.TRUE.equals(req.getFollowUpEnabled());
                 t.setFollowUpEnabled(enabled);
@@ -187,7 +207,7 @@ public class TaskController {
             }
             if (req.getFollowUpAt() != null) {
                 t.setFollowUpAt(req.getFollowUpAt());
-                t.setFollowUpEnabled(true); // setting time implies enabling
+                t.setFollowUpEnabled(true);
             }
 
             if (t.isFollowUpEnabled() && t.getFollowUpAt() == null) {
@@ -199,7 +219,90 @@ public class TaskController {
         return toDto(saved);
     }
 
-    // 🗑️ حذف تسک: فقط creator یا admin
+    @PostMapping("/{id}/request-close")
+    @Transactional
+    public TaskDto requestClose(@PathVariable Long id, Authentication auth) {
+        User me = currentUser.requireUser(auth);
+
+        Task t = repo.findByIdWithPeople(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "task not found"));
+
+        boolean isAssignee = t.getAssignedTo() != null && t.getAssignedTo().getId().equals(me.getId());
+        if (!(me.isAdmin() || isAssignee)) {
+            throw new AccessDeniedException("Only assignee can request close");
+        }
+
+        if (t.getStatus() == TaskStatus.DONE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Task is already closed");
+        }
+
+        if (!t.isCloseRequested()) {
+            t.setCloseRequested(true);
+            t.setCloseRequestedAt(Instant.now());
+
+            if (t.getCreatedBy() != null && !t.getCreatedBy().getId().equals(me.getId())) {
+                InAppNotification n = new InAppNotification();
+                n.setType("TASK_CLOSE_REQUEST");
+                n.setUser(t.getCreatedBy());
+                n.setTaskId(t.getId());
+                n.setTitle("درخواست بستن تسک: " + safe(t.getTitle()));
+                n.setMessage("" + safe(me.getFullName()) + " درخواست بستن این تسک را ثبت کرد.\nبرای بستن نهایی، تسک را باز کن.");
+                notifRepo.save(n);
+            }
+        }
+
+        Task saved = repo.save(t);
+        return toDto(saved);
+    }
+
+    @PostMapping("/{id}/close")
+    @Transactional
+    public TaskDto close(@PathVariable Long id, Authentication auth) {
+        User me = currentUser.requireUser(auth);
+
+        Task t = repo.findByIdWithPeople(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "task not found"));
+
+        boolean isCreator = t.getCreatedBy() != null && t.getCreatedBy().getId().equals(me.getId());
+        boolean isAssignee = t.getAssignedTo() != null && t.getAssignedTo().getId().equals(me.getId());
+
+        if (!(me.isAdmin() || isCreator)) {
+            throw new AccessDeniedException("Only creator or admin can close task");
+        }
+
+        if (t.getStatus() == TaskStatus.DONE) {
+            return toDto(t);
+        }
+
+        if (!me.isAdmin()) {
+            boolean selfTask = isCreator && isAssignee;
+            if (!selfTask && !t.isCloseRequested()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Assignee must request close first");
+            }
+        }
+
+        t.setStatus(TaskStatus.DONE);
+        t.setClosedAt(Instant.now());
+        t.setClosedBy(me);
+        if (!t.isCloseRequested()) {
+            t.setCloseRequested(true);
+            t.setCloseRequestedAt(Instant.now());
+        }
+
+        if (t.getAssignedTo() != null && !t.getAssignedTo().getId().equals(me.getId())) {
+            InAppNotification n = new InAppNotification();
+            n.setType("TASK_CLOSED");
+            n.setUser(t.getAssignedTo());
+            n.setTaskId(t.getId());
+            n.setTitle("تسک بسته شد: " + safe(t.getTitle()));
+            n.setMessage("" + safe(me.getFullName()) + " این تسک را بست.");
+            notifRepo.save(n);
+        }
+
+        Task saved = repo.save(t);
+        return toDto(saved);
+    }
+
     @DeleteMapping("/{id}")
     @Transactional
     public ResponseEntity<Void> delete(@PathVariable Long id, Authentication auth) {
@@ -214,5 +317,9 @@ public class TaskController {
 
         repo.delete(t);
         return ResponseEntity.noContent().build();
+    }
+
+    private static String safe(String s) {
+        return s == null ? "" : s;
     }
 }

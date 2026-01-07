@@ -1,3 +1,4 @@
+// backend/src/main/java/com/taskchi/taskchi/notification/ReminderScheduler.java
 package com.taskchi.taskchi.notification;
 
 import com.taskchi.taskchi.meeting.Meeting;
@@ -31,8 +32,8 @@ public class ReminderScheduler {
     }
 
     // every 60 seconds
-    @Transactional
     @Scheduled(fixedDelay = 60_000)
+    @Transactional
     public void run() {
         Instant now = Instant.now();
         ZonedDateTime zNow = now.atZone(zoneId);
@@ -41,15 +42,17 @@ public class ReminderScheduler {
         LocalDate from = zNow.toLocalDate().minusDays(1);
         LocalDate to = zNow.toLocalDate().plusDays(30);
 
-        List<Meeting> meetings = meetingRepo.findByDateBetweenFetchAll(from, to);
+        // IMPORTANT: fetch reminders + owner to avoid LazyInitializationException in scheduler
+        List<Meeting> meetings = meetingRepo.findInRangeWithReminders(from, to);
 
         for (Meeting m : meetings) {
             // Ownership is required for in-app notifications
             if (m.getCreatedBy() == null) continue;
-            ZonedDateTime meetingStart = toMeetingStart(m);
 
             // Respect per-meeting alarm toggle
             if (!m.isAlarmEnabled()) continue;
+
+            ZonedDateTime meetingStart = toMeetingStart(m);
 
             // Mandatory same-day alert (at meeting start) + custom reminders
             java.util.LinkedHashSet<Integer> triggers = new java.util.LinkedHashSet<>();
